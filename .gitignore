@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# VS Code
+.vscode/
+
+# Media files
+*.mp4
+*.mkv
+*.avi
+*.mov
+
+# SceneDetect Output
+*-scenes.csv
+*-plots.pdf
+output/
+
+# OS files
+.DS_Store
+Thumbs.db
