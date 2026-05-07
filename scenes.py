@@ -1,7 +1,7 @@
 import ollama
 import json
+from scenedetect import detect, ContentDetector, AdaptiveDetector
 
-# accepts text segment and returns json dict for classification
 def classify_segment(text: str) -> dict:
     """Classify a transcript segment into a content category."""
     
@@ -33,19 +33,19 @@ Respond ONLY in JSON with this exact structure:
     
     return json.loads(response['message']['content'])
 
+
+def process_scenes(location):
+    scene_list = detect(location, AdaptiveDetector())
+    for i, (start_time, end_time) in enumerate(scene_list):
+        print(f"Scene {i}:")
+        print(f"  Starts at: {start_time.get_timecode()} ({start_time.get_seconds()}s)")
+        print(f"  Ends at:   {end_time.get_timecode()} ({end_time.get_seconds()}s)")
+        print(f"  Length:    {end_time.get_seconds() - start_time.get_seconds()}s")
+
+
 # Run the prompt and analyze the test segment
 if __name__ == '__main__':
-    test_segments = [
-        "Hey everyone, welcome back to the channel! Today we're going to talk about how neural networks learn.",
-        "This episode is brought to you by Squarespace. Use code PODCAST for 10% off your first purchase.",
-        "So when you backpropagate, the gradients flow backward through each layer, updating the weights.",
-        "Thanks for watching! Don't forget to like and subscribe, and I'll see you in the next one."
-    ]
-    
-    for segment in test_segments:
-        print(f"\nSegment: {segment[:60]}...")
-        result = classify_segment(segment)
-        print(f"Category: {result['category']}")
-        print(f"Confidence: {result['confidence']}")
-        print(f"Reasoning: {result['reasoning']}")
+    process_scenes('data/test_001.mp4')
 
+
+    
