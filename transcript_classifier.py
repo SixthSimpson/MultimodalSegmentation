@@ -81,11 +81,8 @@ def classify_transcript(transcript_path: str, model: str = 'llama3.1:8b') -> dic
             },
             'required': ['segments']
         },
-        # low temp for more deterministic results
-        options={'temperature': 0.1, 
-                 'num_ctx': 16384,
-                 'num_predict': 4096,
-                 }  
+        # low temp + 16k context (default 2k truncates the prompt silently)
+        options={'temperature': 0.1, 'num_ctx': 16384, 'num_predict': 4096},
     )
     
     result = json.loads(response['message']['content'])
@@ -111,9 +108,8 @@ if __name__ == '__main__':
     with open(output_path, 'w') as f:
         json.dump(result, f, indent=2)
     
-    print(f"\n✓ Saved {len(result['segments'])} segments to {output_path}")
-    print("\nPredicted segments:")
+    print(f"\nSaved {len(result['segments'])} segments to {output_path}")
     for seg in result['segments']:
-        marker = "🎯" if seg['label'] == 'advertisement' else "  "
+        marker = "AD" if seg['label'] == 'advertisement' else "  "
         duration = seg['end'] - seg['start']
         print(f"  {marker} [{seg['start']:7.1f} - {seg['end']:7.1f}] ({duration:6.1f}s) {seg['label']}")

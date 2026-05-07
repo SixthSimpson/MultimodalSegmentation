@@ -1,51 +1,51 @@
-import ollama
 import json
-from scenedetect import detect, ContentDetector, AdaptiveDetector
-
-def classify_segment(text: str) -> dict:
-    """Classify a transcript segment into a content category."""
-    
-    system_prompt = """You are a content classifier for long-form video transcripts.
-Classify the given segment into ONE of these categories:
-- intro: Opening of the video, host greeting, episode preview
-- main_content: The core topic/discussion of the video
-- advertisement: Paid ads, sponsor reads, promotional content
-- transition: Brief segues between topics
-- outro: Closing remarks, sign-offs, calls to subscribe
-- qa: Question and answer segments
-
-Respond ONLY in JSON with this exact structure:
-{
-  "category": "<one of the categories above>",
-  "confidence": <number between 0 and 1>,
-  "reasoning": "<brief explanation>"
-}"""
+import os
+from scenedetect import detect, AdaptiveDetector
 
 
-    response = ollama.chat(
-        model='llama3.1:8b',
-        messages=[
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': f'Classify this segment:\n\n"{text}"'}
-        ],
-        format='json'
-    )
-    
-    return json.loads(response['message']['content'])
+def detect_scenes(video_path, video_id):
+    """Run PySceneDetect, return scene boundaries."""
+    # adaptive handles fades/dissolves better than content
+    scene_list = detect(video_path, AdaptiveDetector())
+
+    scenes = []
+    for i, (start, end) in enumerate(scene_list):
+        s = start.get_seconds()
+        e = end.get_seconds()
+        scenes.append({
+            'scene_index': i,
+            'start': float(s),
+            'end': float(e),
+            'duration': float(e - s),
+        })
+
+    return {
+        'video_id': video_id,
+        'duration_sec': scenes[-1]['end'] if scenes else 0.0,
+        'scenes': scenes,
+    }
 
 
-def process_scenes(location):
-    scene_list = detect(location, AdaptiveDetector())
-    for i, (start_time, end_time) in enumerate(scene_list):
-        print(f"Scene {i}:")
-        print(f"  Starts at: {start_time.get_timecode()} ({start_time.get_seconds()}s)")
-        print(f"  Ends at:   {end_time.get_timecode()} ({end_time.get_seconds()}s)")
-        print(f"  Length:    {end_time.get_seconds() - start_time.get_seconds()}s")
-
-
-# Run the prompt and analyze the test segment
 if __name__ == '__main__':
-    process_scenes('data/test_001.mp4')
+    import argparse
+    parser = argparse.ArgumentParser(description='Detect shot boundaries.')
+    parser.add_argument('filename', nargs='?', default='test_001.mp4',
+                        help='Video filename inside data/videos/ (default: test_001.mp4)')
+    args = parser.parse_args()
 
+    stem = os.path.splitext(args.filename)[0]
+    video_path = os.path.join('data', 'videos', args.filename)
+    output_path = os.path.join('data', 'visual_events', f'{stem}.json')
 
-    
+    os.makedirs('data/visual_events', exist_ok=True)
+
+    result = detect_scenes(video_path, stem)
+
+    with open(output_path, 'w') as f:
+        json.dump(result, f, indent=2)
+
+    print(f"{len(result['scenes'])} scenes, total {result['duration_sec']:.1f}s")
+    print("First 5:")
+    for s in result['scenes'][:5]:
+        print(f"  [{s['start']:7.1f} - {s['end']:7.1f}] ({s['duration']:.1f}s)")
+    print(f"Saved to {output_path}")

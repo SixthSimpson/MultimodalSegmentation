@@ -1,7 +1,4 @@
-"""
-Run the full pipeline on each video and print metrics.
-Skips stages whose output already exists (use --force to redo everything).
-"""
+# Run the full pipeline end-to-end on each video. Skips cached stages by default.
 import argparse
 import json
 import os
@@ -10,8 +7,8 @@ import time
 from extract_audio import extract_audio
 from transcript_pipeline import transcribe
 from audio_pipeline import analyze_audio
+from scenes import detect_scenes
 from convert_ground_truth import convert
-from transcript_classifier import classify_transcript
 from evaluate import per_second_accuracy, ad_detection_metrics, boundary_accuracy
 
 DEFAULT_VIDEOS = ['test_001', 'test_002', 'test_003', 'test_004', 'test_005']
@@ -24,16 +21,29 @@ def maybe_skip(path, force):
     return False
 
 
-def run(video_id, force, model_size):
-    print(f"\n--- {video_id} ---")
+def run(video_id, force, model_size, classifier):
+    print(f"\n--- {video_id} ({classifier}) ---")
+
+    if classifier == 'ollama':
+        from transcript_classifier import classify_transcript as classify_fn
+        suffix = 'baseline'
+    elif classifier == 'groq':
+        from transcript_classifier_groq import classify_transcript as classify_fn
+        suffix = 'groq'
+    elif classifier == 'fusion':
+        from transcript_classifier_fusion import classify_transcript as classify_fn
+        suffix = 'fusion'
+    else:
+        raise ValueError(f"unknown classifier: {classifier}")
 
     mp4    = f'data/videos/{video_id}.mp4'
     wav    = f'data/videos/{video_id}.wav'
     tjson  = f'data/transcripts/{video_id}.json'
     ajson  = f'data/audio_events/{video_id}.json'
+    vjson  = f'data/visual_events/{video_id}.json'
     src    = f'source_of_truth/{video_id}.json'
-    dst    = f'data/ground_truth/{video_id}.json'
-    pred   = f'data/predictions/{video_id}_baseline.json'
+    dst    = f'data/source_of_truth_flat/{video_id}.json'
+    pred   = f'data/predictions/{video_id}_{suffix}.json'
 
     if not os.path.exists(mp4):
         print(f"  no mp4 ({mp4}), skipping video")
@@ -42,7 +52,8 @@ def run(video_id, force, model_size):
         print(f"  no source_of_truth ({src}), skipping video")
         return None
 
-    for d in ['data/transcripts', 'data/audio_events', 'data/ground_truth', 'data/predictions']:
+    for d in ['data/transcripts', 'data/audio_events', 'data/visual_events',
+              'data/source_of_truth_flat', 'data/predictions']:
         os.makedirs(d, exist_ok=True)
 
     # 1. wav
@@ -51,7 +62,7 @@ def run(video_id, force, model_size):
         extract_audio(mp4)
         print(f"  wav    {time.time()-t0:.1f}s")
 
-    # 2. transcript -- this is the slow one (~3-5 min on M1 with medium)
+    # 2. transcript -- slow, ~3-5 min per video on M1
     if not maybe_skip(tjson, force):
         t0 = time.time()
         result = transcribe(wav, video_id, model_size=model_size)
@@ -67,19 +78,27 @@ def run(video_id, force, model_size):
             json.dump(result, f, indent=2)
         print(f"  audio  {time.time()-t0:.1f}s")
 
-    # 4. ground truth (course json -> our format)
+    # 4. scene cuts (~30-90s on first run)
+    if not maybe_skip(vjson, force):
+        t0 = time.time()
+        result = detect_scenes(mp4, video_id)
+        with open(vjson, 'w') as f:
+            json.dump(result, f, indent=2)
+        print(f"  scenes {time.time()-t0:.1f}s ({len(result['scenes'])} cuts)")
+
+    # 5. ground truth (course json -> flat format)
     if not maybe_skip(dst, force):
         convert(src, dst)
 
-    # 5. classify -- ollama call, ~30s
+    # 6. classify
     if not maybe_skip(pred, force):
         t0 = time.time()
-        result = classify_transcript(tjson)
+        result = classify_fn(tjson)
         with open(pred, 'w') as f:
             json.dump(result, f, indent=2)
-        print(f"  ollama {time.time()-t0:.1f}s")
+        print(f"  {classifier} {time.time()-t0:.1f}s")
 
-    # 6. eval (always runs, doesn't write anything)
+    # 7. eval (no caching, always runs)
     p = json.load(open(pred))
     t = json.load(open(dst))
     acc = per_second_accuracy(p['segments'], t['segments'], t['duration_sec'])
@@ -133,7 +152,9 @@ if __name__ == '__main__':
     ap.add_argument('video_ids', nargs='*', default=DEFAULT_VIDEOS)
     ap.add_argument('--force', action='store_true', help='redo cached stages')
     ap.add_argument('--model', default='medium', help='whisper model size')
+    ap.add_argument('--classifier', choices=['ollama', 'groq', 'fusion'], default='ollama',
+                    help='which classifier to use (default: ollama). fusion = transcript + audio + visual')
     args = ap.parse_args()
 
-    results = [run(v, args.force, args.model) for v in args.video_ids]
+    results = [run(v, args.force, args.model, args.classifier) for v in args.video_ids]
     summarize(results)

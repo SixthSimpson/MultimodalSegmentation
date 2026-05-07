@@ -9,13 +9,12 @@ def transcribe(audio_path: str, video_id: str, model_size: str = "small") -> dic
     model = WhisperModel(model_size, device="auto", compute_type="int8")
     
     print(f"Transcribing {audio_path}...")
+    # vad_filter=True silently skipped ads, condition_on_previous_text drifted across ad boundaries
     segments, info = model.transcribe(
         audio_path,
         beam_size=5,
-        # transcribe everything because true skipped over ads
-        vad_filter=False,     
-        word_timestamps=False,    
-        # prevents contextual continuation when ads arise
+        vad_filter=False,
+        word_timestamps=False,
         condition_on_previous_text=False,
     )
     
@@ -26,7 +25,6 @@ def transcribe(audio_path: str, video_id: str, model_size: str = "small") -> dic
             'end': float(seg.end),
             'text': seg.text.strip()
         })
-        # Print as we go so you can see progress
         print(f"  [{seg.start:6.1f} - {seg.end:6.1f}]  {seg.text.strip()[:80]}")
     
     return {

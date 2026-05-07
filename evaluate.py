@@ -7,7 +7,7 @@ def label_at(t: float, segments: list) -> str:
     for seg in segments:
         if seg['start'] <= t < seg['end']:
             return seg['label']
-    return 'video_content'  # default if outside any segment
+    return 'video_content'
 
 
 def per_second_accuracy(pred_segments, truth_segments, duration):
@@ -29,15 +29,13 @@ def ad_detection_metrics(pred_segments, truth_segments):
     
     detected = 0
     for true_ad in true_ads:
-        # Did any predicted ad overlap with this true ad?
         for pred_ad in pred_ads:
             if pred_ad['start'] < true_ad['end'] and pred_ad['end'] > true_ad['start']:
                 detected += 1
                 break
-    
+
     recall = detected / len(true_ads) if true_ads else 0
-    
-    # Precision: of predicted ads, how many overlap a true ad?
+
     correctly_predicted = 0
     for pred_ad in pred_ads:
         for true_ad in true_ads:
@@ -71,7 +69,6 @@ def boundary_accuracy(pred_segments, truth_segments):
     if not true_boundaries or not pred_boundaries:
         return None
     
-    # For each true boundary, find closest predicted
     errors = []
     for tb in true_boundaries:
         closest = min(pred_boundaries, key=lambda pb: abs(pb - tb))
@@ -117,5 +114,5 @@ def evaluate(pred_path: str, truth_path: str):
 
 if __name__ == '__main__':
     pred_path = sys.argv[1] if len(sys.argv) > 1 else 'data/predictions/test_001_baseline.json'
-    truth_path = sys.argv[2] if len(sys.argv) > 2 else 'data/ground_truth/test_001.json'
+    truth_path = sys.argv[2] if len(sys.argv) > 2 else 'data/source_of_truth_flat/test_001.json'
     evaluate(pred_path, truth_path)

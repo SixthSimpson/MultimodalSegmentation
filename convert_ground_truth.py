@@ -30,7 +30,7 @@ def convert(course_json_path: str, output_path: str):
     with open(output_path, 'w') as f:
         json.dump(output, f, indent=2)
     
-    print(f"✓ Wrote {len(segments)} segments to {output_path}")
+    print(f"wrote {len(segments)} segments to {output_path}")
 
 
 if __name__ == '__main__':
@@ -48,10 +48,10 @@ if __name__ == '__main__':
             video_id = os.path.splitext(fname)[0]
             convert(
                 os.path.join('source_of_truth', fname),
-                os.path.join('data', 'ground_truth', f'{video_id}.json'),
+                os.path.join('data', 'source_of_truth_flat', f'{video_id}.json'),
             )
     else:
         convert(
             os.path.join('source_of_truth', f'{args.video_id}.json'),
-            os.path.join('data', 'ground_truth', f'{args.video_id}.json'),
+            os.path.join('data', 'source_of_truth_flat', f'{args.video_id}.json'),
         )

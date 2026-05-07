@@ -5,30 +5,22 @@ import json
 def analyze_audio(audio_path: str, video_id: str) -> dict:
     """Extract audio events: silence, speech, music regions."""
 
-    # Loading audio 16khz mono audio
-    y, sr = librosa.load(audio_path, sr = 16000, mono = True)
+    y, sr = librosa.load(audio_path, sr=16000, mono=True)
     duration = len(y) / sr
 
-    # frame level analysis (1 frame = ~32ms)
+    # 32ms frames
     frame_length = 2048
     hop_length = 512
 
-    # RMS energy (essentially volume)
-    rms = librosa.feature.rms(y = y, frame_length = frame_length, hop_length = hop_length)[0]
-
-    # Spectral centroid  
+    rms = librosa.feature.rms(y=y, frame_length=frame_length, hop_length=hop_length)[0]
     centroid = librosa.feature.spectral_centroid(y=y, sr=sr, hop_length=hop_length)[0]
-
-    # Zero crossing rate (speech has higher crossing rate than music)
+    # zero-crossing rate -- speech crosses zero more than tonal music
     zcr = librosa.feature.zero_crossing_rate(y, frame_length=frame_length, hop_length=hop_length)[0]
-
-    # Convert frame indices to timestamps
     times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
 
-    # Classify each frame 
+    # adaptive threshold so each video's mastering level doesn't matter
+    silence_threshold = float(np.percentile(rms, 10))
     labels = []
-    silence_threshold = 0.01 
-
     for i in range(len(rms)):
         if rms[i] < silence_threshold:
             labels.append('silence')
@@ -36,9 +28,9 @@ def analyze_audio(audio_path: str, video_id: str) -> dict:
             labels.append('music')
         else:
             labels.append('speech')
-    
-    # Merge consecutive same-label frames into events
-    events = merge_into_events(times, labels, min_duration=3.0)
+
+    # 1.5s catches real pauses without firing on breath gaps
+    events = merge_into_events(times, labels, min_duration=1.5)
 
     return{
         'video_id': video_id,
@@ -101,22 +93,18 @@ if __name__ == '__main__':
     audio_path = os.path.join('data', 'videos', f'{stem}.wav')
     result = analyze_audio(audio_path, stem)
 
-    # Print summary
     print(f"Duration: {result['duration_sec']:.1f}s")
     print(f"Total events: {len(result['events'])}")
 
-    # Count by type
     from collections import Counter
     counts = Counter(e['type'] for e in result['events'])
     for label, count in counts.items():
         print(f" {label}: {count} events")
 
-    # Show the first 10 events
     print("\nFirst 10 events:")
     for e in result['events'][:10]:
         print(f"  {e['start']:6.1f} - {e['end']:6.1f}  [{e['type']}]")
 
-    # Save to JSON
     output_path = os.path.join('data', 'audio_events', f'{stem}.json')
     with open(output_path, 'w') as f:
         json.dump(result, f, indent=2)
